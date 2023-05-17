@@ -2,6 +2,7 @@ import cors from "cors"
 import mysql from "mysql2"
 import express, { Router } from "express"
 import jwt from 'jsonwebtoken'
+import bcrypt from 'bcrypt'
 import session from "express-session"
 import bodyparesr from 'body-parser'
 
@@ -39,8 +40,8 @@ app.use(
 //     })
 //   )
   
-  //不放這個由axios發出的post 拿到的req.body會無法解析
-app.use(bodyparesr.json())
+//不放這個由axios發出的post 拿到的req.body會無法解析
+// app.use(bodyparesr.json())
 
 // app.post('/auth/google', async (req, res) => {
  
@@ -63,19 +64,41 @@ app.use(bodyparesr.json())
 //     //ex 使用者資訊存入資料庫，把資料存到 session內 等等
 // })
 
-app.post('/signup', (req, res)=>{
-    const sql = "INSERT INTO `User`(`name`, `email`, `password`) VALUES (?)"
-    const values = [
-        req.body.name,
-        req.body.email,
-        req.body.password,
-    ]
-    db.query(sql, [values], (err, data)=>{
-        if(err) return res.json(err)
-        return res.json(data)
-    })
+/* Register */ 
+app.post('/signup', async (req, res)=>{
+    // const sql = "INSERT INTO `User`(`name`, `email`, `password`) VALUES (?)"
+    // const values = [
+    //     req.body.name,
+    //     req.body.email,
+    //     req.body.password,
+    // ]
+    // db.query(sql, [values], (err, data)=>{
+    //     if(err) return res.json(err)
+    //     return res.json(data)
+    // })
+    try {
+        const { name, email, password } = req.body;
+        const hashedPassword = await bcrypt.hash(password, 10);
+    
+        const sql = "INSERT INTO `User`(`name`, `email`, `password`) VALUES (?, ?, ?)";
+        const values = [
+          name,
+          email,
+          hashedPassword,
+        ];
+    
+        db.query(sql, values, (err, data) => {
+          if (err) {
+            return res.json(err);
+          }
+          return res.json(data);
+        });
+      } catch (err) {
+        return res.json(err);
+      }
 })
 
+/* JWT */ 
 const verifyJwt= (req, res, next)=>{
     const token = req.headers["access-token"];
     if(token === ''){
@@ -96,20 +119,77 @@ app.get("/", verifyJwt, (req, res)=>{
     res.json({Status: "Success"})
 })
 
-app.post('/login', (req, res)=>{
-    const sql = "SELECT * FROM `User` WHERE `email` = ? AND `password` = ?"
-    db.query(sql, [req.body.email, req.body.password], (err, data)=>{
-        if(err) return res.json(err)
-        if(data.length > 0){
-            const id = data[0].id
-            const token = jwt.sign({id}, "jwtSecretKey", {expiresIn: 3000})
-            return res.json({Login: true, token, data})
-        }else{
-            return res.json({Message: "帳號或密碼錯誤"})
+/* Login */ 
+// app.post('/login', (req, res)=>{
+//     const sql = "SELECT * FROM `User` WHERE `email` = ? AND `password` = ?"
+//     db.query(sql, [req.body.email, req.body.password], (err, data)=>{
+//         if(err) return res.json(err)
+//         if(data.length > 0){
+//             const id = data[0].id
+//             const token = jwt.sign({id}, "jwtSecretKey", {expiresIn: 3000})
+//             return res.json({Login: true, token, data})
+//         }else{
+//             return res.json({Message: "帳號或密碼錯誤"})
+//         }
+//     })
+// })
+app.post('/login', async (req, res) => {
+    try {
+      const { email, password } = req.body;
+  
+      const sql = "SELECT * FROM `User` WHERE `email` = ?";
+      db.query(sql, [email], async (err, data) => {
+        if (err) {
+          return res.json(err);
         }
+  
+        if (data.length > 0) {
+          const hashedPassword = data[0].password;
+          const match = await bcrypt.compare(password, hashedPassword);
+  
+          if (match) {
+            const id = data[0].id;
+            const token = jwt.sign({ id }, "jwtSecretKey", { expiresIn: 3000 });
+            return res.json({ Login: true, token, data });
+          } else {
+            return res.json({ Message: "帳號或密碼錯誤" });
+          }
+        } else {
+          return res.json({ Message: "帳號或密碼錯誤" });
+        }
+      });
+    } catch (err) {
+      return res.json(err);
+    }
+});
+
+/* User */ 
+app.get("/user/:id", (req, res)=>{
+    const sql = "SELECT * FROM `User` WHERE id = ?"
+    const userId = req.params.id;
+    db.query(sql, userId, (err, data)=>{
+        if(err) return res.json(err)
+        return res.json(data)
     })
 })
 
+app.put("/user/:id", verifyJwt, (req, res)=>{
+    const userId = req.params.id;
+    const sql = "UPDATE `User` SET `name` = ?, `img_url` = ?, `sex` = ? WHERE `id` = ?"
+
+    const values = [
+        req.body.name,
+        req.body.img_url,
+        req.body.sex,
+    ]
+
+    db.query(sql, [...values, userId], (err, data) => {
+        if(err) return res.json(err)
+        return res.json("User has been update successfully.")
+    })
+})
+
+/* Comment */ 
 app.get("/comment", (req, res)=>{
     const sql = "SELECT Comment.*, User.name FROM `Comment`,`User` WHERE Comment.user_id = User.id"
     db.query(sql, (err, data)=>{
@@ -121,6 +201,18 @@ app.get("/comment", (req, res)=>{
 app.get("/comment/count", (req, res)=>{
     const sql = "SELECT COUNT(*) AS count FROM `Comment`"
     db.query(sql, (err, data)=>{
+        if(err) return res.json(err)
+        return res.json(data)
+    })
+})
+
+app.post("/comment/search", (req, res)=>{
+    // console.log(req.body)
+    const sql = "SELECT * FROM `Comment` WHERE `content` LIKE ?"
+    const values = req.body.content
+    const queryValue = `%${values}%`
+
+    db.query(sql, queryValue, (err, data) => {
         if(err) return res.json(err)
         return res.json(data)
     })
@@ -138,30 +230,6 @@ app.post("/comment", verifyJwt, (req, res)=>{
         return res.json("Comment has been created successfully.")
     })
 })
-
-app.post("/comment/search", (req, res)=>{
-    console.log(req.body)
-    const sql = "SELECT * FROM `Comment` WHERE `content` LIKE ?"
-    const values = req.body.content
-    const queryValue = `%${values}%`
-
-    db.query(sql, queryValue, (err, data) => {
-        if(err) return res.json(err)
-        return res.json(data)
-    })
-})
-// app.post("/comment/search", (req, res)=>{
-//     console.log(req.body)
-//     const sql = "SELECT * FROM `Comment` WHERE `content` LIKE '%?%'"
-//     const values = [
-//         req.body.content,
-//     ]
-//     db.query(sql, [values], (err, data) => {
-//         if(err) return res.json(err)
-//         return res.json(data)
-//     })
-// })
-
 
 app.delete("/comment/:id", verifyJwt, (req, res)=>{
     const commentId = req.params.id;
