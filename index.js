@@ -6,7 +6,6 @@ import bcrypt from 'bcrypt'
 import session from "express-session"
 import bodyparesr from 'body-parser'
 
-// const sqlConfig = { host: "localhost", port: 3366, user: "root", password: "root", database: "personal_web", } const db = mysql.createConnection( sqlConfig ) db.connect(); db.on('error', err =>{ console.log("lost connection"); connect.mysql.createConnection(sqlConfig) })
 const app = express()
 
 const db = mysql.createConnection({
@@ -39,43 +38,9 @@ app.use(
 //       secret: 'googleAuth'
 //     })
 //   )
-  
-//不放這個由axios發出的post 拿到的req.body會無法解析
-// app.use(bodyparesr.json())
-
-// app.post('/auth/google', async (req, res) => {
- 
-//     //引入官方的套件
-//     const { OAuth2Client } = require('google-auth-library')
-//     const CLIENT_ID = '913223523927-2v1r4bfrprcvcbtvnpv52h844en879e8.apps.googleusercontent.com'
-//     const client = new OAuth2Client(CLIENT_ID)
-//     const token = req.body.id_token
-    
-//     //將token和client_Id放入參數一起去做驗證
-//     const ticket = await client.verifyIdToken({
-//       idToken: token,
-//       audience: CLIENT_ID
-//     })
-    
-//     //拿到的ticket就是換回來的使用者資料
-//     console.log(ticket)
-    
-//     //以下就個人需求看要拿資料做哪些使用
-//     //ex 使用者資訊存入資料庫，把資料存到 session內 等等
-// })
 
 /* Register */ 
 app.post('/signup', async (req, res)=>{
-    // const sql = "INSERT INTO `User`(`name`, `email`, `password`) VALUES (?)"
-    // const values = [
-    //     req.body.name,
-    //     req.body.email,
-    //     req.body.password,
-    // ]
-    // db.query(sql, [values], (err, data)=>{
-    //     if(err) return res.json(err)
-    //     return res.json(data)
-    // })
     try {
         const { name, email, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -107,6 +72,7 @@ const verifyJwt= (req, res, next)=>{
         jwt.verify(token, "jwtSecretKey", (err, decoded)=>{
             if(err){
                 res.json("Not Authenticated");
+                // localStorage.removeItem('token');
             }else{
                 req.id = decoded.id;
                 next();
@@ -119,20 +85,6 @@ app.get("/", verifyJwt, (req, res)=>{
     res.json({Status: "Success"})
 })
 
-/* Login */ 
-// app.post('/login', (req, res)=>{
-//     const sql = "SELECT * FROM `User` WHERE `email` = ? AND `password` = ?"
-//     db.query(sql, [req.body.email, req.body.password], (err, data)=>{
-//         if(err) return res.json(err)
-//         if(data.length > 0){
-//             const id = data[0].id
-//             const token = jwt.sign({id}, "jwtSecretKey", {expiresIn: 3000})
-//             return res.json({Login: true, token, data})
-//         }else{
-//             return res.json({Message: "帳號或密碼錯誤"})
-//         }
-//     })
-// })
 app.post('/login', async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -163,7 +115,7 @@ app.post('/login', async (req, res) => {
     }
 });
 
-/* User */ 
+/* User */
 app.get("/user/:id", (req, res)=>{
     const sql = "SELECT * FROM `User` WHERE id = ?"
     const userId = req.params.id;
@@ -175,12 +127,14 @@ app.get("/user/:id", (req, res)=>{
 
 app.put("/user/:id", verifyJwt, (req, res)=>{
     const userId = req.params.id;
-    const sql = "UPDATE `User` SET `name` = ?, `img_url` = ?, `sex` = ? WHERE `id` = ?"
+    const sql = "UPDATE `User` SET `name` = ?, `img_url` = ?, `sex` = ?, `phone` = ?, `des` = ? WHERE `id` = ?"
 
     const values = [
         req.body.name,
         req.body.img_url,
         req.body.sex,
+        req.body.phone,
+        req.body.des,
     ]
 
     db.query(sql, [...values, userId], (err, data) => {
