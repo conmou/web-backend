@@ -45,11 +45,12 @@ app.post('/signup', async (req, res)=>{
         const { name, email, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
     
-        const sql = "INSERT INTO `User`(`name`, `email`, `password`) VALUES (?, ?, ?)";
+        const sql = "INSERT INTO `User`(`name`, `email`, `password`, `is_anonymous`) VALUES (?, ?, ?, ?)";
         const values = [
           name,
           email,
           hashedPassword,
+          0,
         ];
     
         db.query(sql, values, (err, data) => {
@@ -89,12 +90,11 @@ app.post('/login', async (req, res) => {
     try {
       const { email, password } = req.body;
   
-      const sql = "SELECT * FROM `User` WHERE `email` = ?";
+      const sql = "SELECT * FROM `User` WHERE `email` = ? AND `is_anonymous` = 0";
       db.query(sql, [email], async (err, data) => {
         if (err) {
           return res.json(err);
         }
-  
         if (data.length > 0) {
           const hashedPassword = data[0].password;
           const match = await bcrypt.compare(password, hashedPassword);
@@ -102,7 +102,14 @@ app.post('/login', async (req, res) => {
           if (match) {
             const id = data[0].id;
             const token = jwt.sign({ id }, "jwtSecretKey", { expiresIn: 3000 });
-            return res.json({ Login: true, token, data });
+            // // 将Token存储到数据库中
+            const updateSql = "UPDATE `User` SET `token` = ? WHERE `id` = ?";
+            db.query(updateSql, [token, id], (updateErr, updateResult) => {
+                if (updateErr) {
+                    return res.json(updateErr);
+                }
+                return res.json({ Login: true, token, data });
+            });
           } else {
             return res.json({ Message: "帳號或密碼錯誤" });
           }
@@ -115,8 +122,38 @@ app.post('/login', async (req, res) => {
     }
 });
 
+app.post('/logout/:id', async (req, res) => {
+    const userId = req.params.id;
+    const token = jwt.sign({ id }, "jwtSecretKey", { expiresIn: 3000 });
+    const sql = "UPDATE `User` SET `token`= NULL WHERE `id` = ?";
+    
+    db.query(sql, [userId], (err, data) => {
+        if (err) {
+            return res.json(err);
+        }
+        return res.json({ Logout: true });
+    });
+});
+
+app.post('/noauth/login', async (req, res) => {
+    try {
+        const sql = "SELECT * FROM `User` WHERE `name` = 'guest'";
+        db.query(sql, (err, data) => {
+          const id = data[0].id;
+          const token = jwt.sign({ id }, "jwtSecretKey", { expiresIn: 300 });
+          if (err) {
+            return res.json(err);
+          }
+          return res.json({ is_anonymous_Login: true, token, data });
+        //   return res.json(data);
+        });
+    } catch (err) {
+        return res.json(err);
+    }
+});
+
 /* User */
-app.get("/user/:id", (req, res)=>{
+app.get("/user/:id", verifyJwt,(req, res)=>{
     const sql = "SELECT * FROM `User` WHERE id = ?"
     const userId = req.params.id;
     db.query(sql, userId, (err, data)=>{
@@ -127,11 +164,10 @@ app.get("/user/:id", (req, res)=>{
 
 app.put("/user/:id", verifyJwt, (req, res)=>{
     const userId = req.params.id;
-    const sql = "UPDATE `User` SET `name` = ?, `img_url` = ?, `sex` = ?, `phone` = ?, `des` = ? WHERE `id` = ?"
+    const sql = "UPDATE `User` SET `name` = ?, `sex` = ?, `phone` = ?, `des` = ? WHERE `id` = ?"
 
     const values = [
-        req.body.name,
-        req.body.img_url,
+        req.body.username,
         req.body.sex,
         req.body.phone,
         req.body.des,
@@ -178,7 +214,6 @@ app.post("/comment", verifyJwt, (req, res)=>{
         req.body.user_id,
         req.body.content,
     ]
- 
     db.query(sql, [values], (err, data) => {
         if(err) return res.json(err)
         return res.json("Comment has been created successfully.")
