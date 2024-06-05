@@ -5,15 +5,17 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import session from "express-session"
 import bodyparesr from 'body-parser'
+import dotenv from 'dotenv'
 
+dotenv.config();
 const app = express()
 
 const db = mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: "root",
-    port: 3306,
-    database: "personal_web",
+    host: process.env.DB_HOST,
+    user: process.env.DB_ACCOUNT,
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT,
+    database: process.env.SCHEMA_NAME,
 })
 
 db.connect(function(error){
@@ -27,17 +29,11 @@ app.use(express.json())
 // app.use(cors())
 app.use(
     cors({
-    origin: ["http://localhost:3000"],
+    origin: [process.env.HOST+process.env.FRONTEND_PORT],
     // methods: ["GET", "POST"],
     credentials: true,
     })
 );
-
-// app.use(
-//     session({
-//       secret: 'googleAuth'
-//     })
-//   )
 
 /* Register */ 
 app.post('/signup', async (req, res)=>{
@@ -253,6 +249,6 @@ app.put("/comment/:id", verifyJwt, (req, res)=>{
     })
 })
 
-app.listen(5001, ()=>{
+app.listen(process.env.BACKEND_PORT, ()=>{
     console.log("Connect to backend!1")
 })
